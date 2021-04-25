@@ -1,4 +1,14 @@
 <template>
+  <div>
+    <el-card>
+      <span>区块：</span>
+      <span>{{nodeState.chain}}</span>&nbsp;
+      <span>节点名称：</span>
+      <span>{{nodeState.nodeName}}</span>&nbsp;
+      <span>版本：</span>
+      <span>{{nodeState.nodeVersion}}</span>
+    </el-card>
+  </div>
   <div class="wallet">
     <el-card>
       <el-button type="primary" @click="newAccount">
@@ -29,24 +39,51 @@
       </el-form>
     </el-card>
     <el-card class="right">
-      <el-button class="import-btn">导入钱包 <input type="file"> </el-button>
+      <el-button class="import-btn">导入钱包 <input type="file" @change="importAccount"> </el-button>
+      <el-button @click="importFromMnemonic">助记词导入</el-button>
       <ul class="list">
         <li v-for="(item, index) in pairs" :key="index">
           <h3>name</h3>
           <div>{{item.meta.name}}</div>
           <h3>地址</h3>
           <div>{{item.address}}</div>
+          <el-button type="success" @click="beforeSend(item.address)">发送</el-button>
         </li>
       </ul>
+    </el-card>
+  </div>
+  <div class="deal">
+    <el-card>
+      <template #header>
+        <span>交易</span>
+      </template>
+      <el-form>
+        <el-form-item label="发送地址">
+          <el-input v-model="transferState.sendAddress" readonly></el-input>
+        </el-form-item>
+        <el-form-item label="接收地址">
+          <el-input v-model="transferState.receiveAddress"></el-input>
+        </el-form-item>
+        <el-button type="primary" :disabled="!(transferState.sendAddress && transferState.receiveAddress)">发送</el-button>
+      </el-form>
     </el-card>
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent, reactive, ref } from 'vue'
-import { initNetwork, createAccount, addAccount, getPairs } from '@/utils/dot'
+import {
+  initNetwork,
+  createAccount,
+  addAccount,
+  getPairs,
+  importAccountFromKeystore,
+  importAccountFromMnemonic,
+  mnemonicValidate
+} from '@/utils/dot'
 import type { KeyringPair } from '@polkadot/keyring/types'
 import { saveAs } from 'file-saver'
+import { ElMessageBox } from 'element-plus'
 
 declare interface Account {
   mnemonic?: string,
@@ -61,13 +98,24 @@ export default defineComponent({
       mnemonic: '',
       address: ''
     })
+    const nodeState = reactive({
+      chain: '',
+      nodeName: '',
+      nodeVersion: ''
+    })
     const pairs = ref<KeyringPair[]>([])
     const currentPair = ref<KeyringPair | null>(null) // 当前填写的pair
     const passphrase = ref('') // 密码
     const name = ref('') // 名称（不重要）
+    const transferState = reactive({
+      sendAddress: '',
+      receiveAddress: ''
+    })
 
-    initNetwork().then(api => {
-      console.log(api)
+    initNetwork().then(({ api, chain, nodeName, nodeVersion }) => {
+      nodeState.chain = chain.toString()
+      nodeState.nodeName = nodeName.toString()
+      nodeState.nodeVersion = nodeVersion.toString()
     })
     // 创建账户
     function newAccount () {
@@ -86,12 +134,38 @@ export default defineComponent({
           name: name.value
         })
         const pair = addAccount(currentPair.value)
-
         const json = pair.toJson(passphrase.value)
         const blob = new Blob([JSON.stringify(json)], { type: 'application/json; charset=utf-8' })
         pairs.value = getPairs()
         saveAs(blob, `${pair.meta.name ? pair.meta.name : 'noName'}-${pair.address}.json`)
       }
+    }
+
+    // 导入keystore
+    function importAccount (e: Event) {
+      const target = e.target as HTMLInputElement
+      importAccountFromKeystore(target.files![0]).then(keyring => {
+        pairs.value = getPairs()
+        console.log(pairs.value)
+      })
+    }
+
+    // 助记词导入
+    function importFromMnemonic () {
+      ElMessageBox.prompt('请输入助记词(每个助记词中已"空格"隔开)', '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputValidator (value) {
+          return mnemonicValidate(value)
+        }
+      }).then(({ value }) => {
+        importAccountFromMnemonic(value)
+        pairs.value = getPairs()
+      })
+    }
+
+    function beforeSend (address:string) {
+      transferState.sendAddress = address
     }
     return {
       pairs,
@@ -99,8 +173,13 @@ export default defineComponent({
       currentPair,
       name,
       passphrase,
+      transferState,
+      nodeState,
       newAccount,
-      genAccount
+      genAccount,
+      importAccount,
+      importFromMnemonic,
+      beforeSend
     }
   }
 })
@@ -127,6 +206,7 @@ export default defineComponent({
     width: 100%;
     height: 100%;
     opacity: 0;
+    cursor: pointer;
   }
 }
 </style>
