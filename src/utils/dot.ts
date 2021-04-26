@@ -3,6 +3,10 @@ import { mnemonicGenerate } from '@polkadot/util-crypto'
 import type { KeyringPair } from '@polkadot/keyring/types'
 import type { Text } from '@polkadot/types'
 
+const node = {
+  polkadot: 'wss://rpc.polkadot.io',
+  dbc: 'wss://infotest.dbcwallet.io'
+}
 let api: ApiPromise | null = null
 
 declare interface Network {
@@ -14,7 +18,7 @@ declare interface Network {
 // 链接账户
 export const initNetwork = async (): Promise<Network> => {
   if (!api) {
-    const provider = new WsProvider('wss://rpc.polkadot.io')
+    const provider = new WsProvider(node.dbc)
     api = await ApiPromise.create({
       provider
     })
