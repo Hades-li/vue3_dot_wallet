@@ -2,6 +2,7 @@ import { ApiPromise, WsProvider, Keyring } from '@polkadot/api'
 import { mnemonicGenerate } from '@polkadot/util-crypto'
 import type { KeyringPair } from '@polkadot/keyring/types'
 import type { Text } from '@polkadot/types'
+import { getFormatBalance } from './tools'
 
 const node = {
   polkadot: 'wss://rpc.polkadot.io',
@@ -37,9 +38,31 @@ export const initNetwork = async (): Promise<Network> => {
   }
 }
 
+// 获得当前账户的余额
+export const getBalance = (address: string) => {
+// Subscribe to balance changes for our account
+  return api?.query.system.account(address, ({ nonce, data: balance }) => {
+    const [num, token] = getFormatBalance(balance.free)
+    console.log(`原始余额是${balance.free}`)
+    console.log(`余额是:${num} ${token}`)
+  })
+}
+
+export const transferBalance = (pair: KeyringPair, toAddress: string, bob: number, password: string) => {
+  if (api) {
+    const transfer = api.tx.balances.transfer(toAddress, bob)
+    pair.unlock(password)
+    return transfer.signAndSend(pair).then(hash => {
+      return Promise.resolve(hash.toHex())
+    })
+  } else {
+    return undefined
+  }
+}
+
 // 创建账户
 const keyring = new Keyring({ type: 'sr25519' })
-keyring.setSS58Format(0) // 0: potkadot前缀 2:kusama前缀
+// keyring.setSS58Format(0) // 0: potkadot前缀 2:kusama前缀 default substrade
 export const createAccount = () => {
   const mnemonic = mnemonicGenerate(12)
   const pair = keyring.createFromUri(mnemonic)
@@ -56,6 +79,9 @@ export const addAccount = (pair: KeyringPair): KeyringPair => {
 
 export const getPairs = (): KeyringPair[] => {
   return keyring?.getPairs()
+}
+export const getPair = (address: string) => {
+  return keyring.getPair(address)
 }
 
 // 导入keystore

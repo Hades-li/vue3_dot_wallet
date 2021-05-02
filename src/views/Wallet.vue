@@ -2,11 +2,11 @@
   <div>
     <el-card>
       <span>区块：</span>
-      <span>{{nodeState.chain}}</span>&nbsp;
+      <span>{{ nodeState.chain }}</span>&nbsp;
       <span>节点名称：</span>
-      <span>{{nodeState.nodeName}}</span>&nbsp;
+      <span>{{ nodeState.nodeName }}</span>&nbsp;
       <span>版本：</span>
-      <span>{{nodeState.nodeVersion}}</span>
+      <span>{{ nodeState.nodeVersion }}</span>
     </el-card>
   </div>
   <div class="wallet">
@@ -15,15 +15,15 @@
         创建钱包
       </el-button>
       <el-form class="form-create">
-        <el-form-item >
+        <el-form-item>
           <h3>助记词</h3>
-          <div>{{account.mnemonic}}</div>
+          <div>{{ account.mnemonic }}</div>
         </el-form-item>
       </el-form>
       <el-form>
         <el-form-item>
           <h3>地址</h3>
-          <div>{{account.address}}</div>
+          <div>{{ account.address }}</div>
         </el-form-item>
         <el-form-item>
           <h3>输入名称</h3>
@@ -34,19 +34,20 @@
           <el-input type="password" v-model="passphrase"></el-input>
         </el-form-item>
         <el-form-item>
-          <el-button type="success" :disabled="!(name && passphrase && currentPair)" @click="genAccount">生成账户</el-button>
+          <el-button type="success" :disabled="!(name && passphrase && currentPair)" @click="genAccount">生成账户
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
     <el-card class="right">
-      <el-button class="import-btn">导入钱包 <input type="file" @change="importAccount"> </el-button>
+      <el-button class="import-btn">导入钱包 <input type="file" @change="importAccount"></el-button>
       <el-button @click="importFromMnemonic">助记词导入</el-button>
       <ul class="list">
         <li v-for="(item, index) in pairs" :key="index">
           <h3>name</h3>
-          <div>{{item.meta.name}}</div>
+          <div>{{ item.meta.name }}</div>
           <h3>地址</h3>
-          <div>{{item.address}}</div>
+          <div>{{ item.address }}</div>
           <el-button type="success" @click="beforeSend(item.address)">发送</el-button>
         </li>
       </ul>
@@ -64,14 +65,22 @@
         <el-form-item label="接收地址">
           <el-input v-model="transferState.receiveAddress"></el-input>
         </el-form-item>
-        <el-button type="primary" :disabled="!(transferState.sendAddress && transferState.receiveAddress)">发送</el-button>
+        <el-form-item label="接收地址">
+          <el-input v-model="transferState.num"></el-input>
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="transferState.password"></el-input>
+        </el-form-item>
+        <el-button type="primary" :disabled="!(transferState.sendAddress && transferState.receiveAddress)"
+                   @click="sendBalance">发送
+        </el-button>
       </el-form>
     </el-card>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, reactive, ref } from 'vue'
+import { defineComponent, reactive, ref, onMounted } from 'vue'
 import {
   initNetwork,
   createAccount,
@@ -79,11 +88,14 @@ import {
   getPairs,
   importAccountFromKeystore,
   importAccountFromMnemonic,
-  mnemonicValidate
+  mnemonicValidate,
+  getBalance,
+  transferBalance,
+  getPair
 } from '@/utils/dot'
 import type { KeyringPair } from '@polkadot/keyring/types'
 import { saveAs } from 'file-saver'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElLoading } from 'element-plus'
 
 declare interface Account {
   mnemonic?: string,
@@ -109,14 +121,23 @@ export default defineComponent({
     const name = ref('') // 名称（不重要）
     const transferState = reactive({
       sendAddress: '',
-      receiveAddress: ''
+      receiveAddress: '',
+      num: 0,
+      password: ''
     })
 
-    initNetwork().then(({ api, chain, nodeName, nodeVersion }) => {
+    initNetwork().then(({
+      api,
+      chain,
+      nodeName,
+      nodeVersion
+    }) => {
       nodeState.chain = chain.toString()
       nodeState.nodeName = nodeName.toString()
       nodeState.nodeVersion = nodeVersion.toString()
+      getBalance('5HbiGvEUL9YRBNgQKFxEMLu6RYEB1xp5rsUzwaLwfQD3mRBq')
     })
+
     // 创建账户
     function newAccount () {
       // const wallet = createWallet()
@@ -126,6 +147,7 @@ export default defineComponent({
       pairs.value = getPairs()
       currentPair.value = item.pair
     }
+
     // 生成账户
     function genAccount () {
       // todo
@@ -164,9 +186,28 @@ export default defineComponent({
       })
     }
 
-    function beforeSend (address:string) {
+    function beforeSend (address: string) {
       transferState.sendAddress = address
     }
+
+    function sendBalance () {
+      const pair = getPair(transferState.sendAddress)
+      const p = transferBalance(pair, transferState.receiveAddress, transferState.num, transferState.password)
+      if (p) {
+        p.then(hex => {
+          console.log(hex)
+        })
+      }
+    }
+
+    onMounted(() => {
+      const loading = ElLoading.service({
+        text: '正在接入网络'
+      })
+      initNetwork().finally(() => {
+        loading.close()
+      })
+    })
     return {
       pairs,
       account,
@@ -179,7 +220,8 @@ export default defineComponent({
       genAccount,
       importAccount,
       importFromMnemonic,
-      beforeSend
+      beforeSend,
+      sendBalance
     }
   }
 })
@@ -188,17 +230,21 @@ export default defineComponent({
 <style lang="scss" scoped>
 .wallet {
   display: flex;
+
   .right {
     margin-left: 10px;
   }
 }
+
 .list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
+
 .import-btn {
   position: relative;
+
   input[type=file] {
     position: absolute;
     left: 0;
